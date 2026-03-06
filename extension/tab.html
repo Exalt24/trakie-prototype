@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trakie - Receiving</title>
+  <link rel="stylesheet" href="tab.css">
+</head>
+<body>
+  <div class="header">
+    <h1>Trakie</h1>
+    <span id="statusBadge" class="status-badge status-waiting">Waiting for phone...</span>
+  </div>
+
+  <div class="main-layout">
+    <!-- Left Panel: QR Code -->
+    <div class="left-panel">
+      <div id="qrSection">
+        <div class="qr-container">
+          <div id="qrCode"></div>
+        </div>
+        <p class="qr-instructions">
+          Scan this QR code with your phone<br>to start capturing images
+        </p>
+      </div>
+
+      <div id="connectedSection" class="hidden">
+        <div class="connected-indicator">&#10003; Phone Connected</div>
+        <div id="phoneInfo" style="font-size: 12px; color: #64748b; margin-top: 6px;"></div>
+        <div id="imageProgress" class="image-progress"></div>
+      </div>
+
+      <div id="doneLeftSection" class="hidden" style="text-align: center;">
+        <div style="width: 64px; height: 64px; border-radius: 50%; background: #14532d; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; font-size: 32px;">&#10003;</div>
+        <div style="font-size: 18px; font-weight: 600; color: #86efac; margin-bottom: 8px;">Data Extracted</div>
+        <div id="extractionSummary" style="font-size: 14px; color: #94a3b8;"></div>
+        <div id="phoneInfoDone" style="font-size: 12px; color: #64748b; margin-top: 12px;"></div>
+      </div>
+    </div>
+
+    <!-- Right Panel: Form -->
+    <div class="right-panel">
+      <div id="emptyState" class="empty-state">
+        <div class="icon">&#128203;</div>
+        <p>Scan the QR code and capture images<br>to autofill the receiving form</p>
+      </div>
+
+      <div id="formSection" class="hidden">
+        <div id="productSelector" class="product-selector">
+          <label>Product:</label>
+        </div>
+
+        <div class="form-grid" id="formGrid">
+          <!-- Product Identity -->
+          <div class="section-title">Product Identity</div>
+
+          <div class="form-group full-width">
+            <div class="label-row">
+              <label for="product_name">Product Name</label>
+              <span id="badge_product_name" class="field-badge hidden"></span>
+            </div>
+            <input type="text" id="product_name">
+          </div>
+
+          <div class="form-group">
+            <div class="label-row">
+              <label for="brand">Brand</label>
+              <span id="badge_brand" class="field-badge hidden"></span>
+            </div>
+            <input type="text" id="brand">
+          </div>
+
+          <div class="form-group">
+            <div class="label-row">
+              <label for="category">Category</label>
+              <span id="badge_category" class="field-badge hidden"></span>
+            </div>
+            <select id="category">
+              <option value="">Select...</option>
+              <option value="Flower">Flower</option>
+              <option value="Edible">Edible</option>
+              <option value="Concentrate">Concentrate</option>
+              <option value="Pre-Roll">Pre-Roll</option>
+              <option value="Topical">Topical</option>
+              <option value="Tincture">Tincture</option>
+              <option value="Vape">Vape</option>
+              <option value="Accessory">Accessory</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <div class="label-row">
+              <label for="subcategory">Subcategory</label>
+              <span id="badge_subcategory" class="field-badge hidden"></span>
+            </div>
+            <input type="text" id="subcategory">
+          </div>
+
+          <!-- Compliance -->
+          <div class="section-title">Compliance</div>
+
+          <div class="form-group">
+            <div class="label-row">
+              <label for="thc_percent">THC %</label>
+              <span id="badge_thc_percent" class="field-badge hidden"></span>
+            </div>
+            <input type="text" id="thc_percent">
+          </div>
+
+          <div class="form-group">
+            <div class="label-row">
+              <label for="cbd_percent">CBD %</label>
+              <span id="badge_cbd_percent" class="field-badge hidden"></span>
+            </div>
+            <input type="text" id="cbd_percent">
+          </div>
+
+          <div class="form-group">
+            <div class="label-row">
+              <label for="net_weight">Net Weight / Unit Count</label>
+              <span id="badge_net_weight" class="field-badge hidden"></span>
+            </div>
+            <input type="text" id="net_weight">
+          </div>
+
+          <div class="form-group">
+            <div class="label-row">
+              <label for="batch_number">Batch / Lot Number</label>
+              <span id="badge_batch_number" class="field-badge hidden"></span>
+            </div>
+            <input type="text" id="batch_number">
+          </div>
+
+          <div class="form-group">
+            <div class="label-row">
+              <label for="expiration_date">Expiration Date</label>
+              <span id="badge_expiration_date" class="field-badge hidden"></span>
+            </div>
+            <input type="text" id="expiration_date">
+          </div>
+
+          <div class="form-group">
+            <div class="label-row">
+              <label for="package_id">Package ID / METRC Tag</label>
+              <span id="badge_package_id" class="field-badge hidden"></span>
+            </div>
+            <input type="text" id="package_id">
+          </div>
+
+          <!-- Pricing -->
+          <div class="section-title">Pricing</div>
+
+          <div class="form-group">
+            <div class="label-row">
+              <label for="wholesale_cost">Wholesale Cost / Unit</label>
+              <span id="badge_wholesale_cost" class="field-badge hidden"></span>
+            </div>
+            <input type="text" id="wholesale_cost">
+          </div>
+
+          <div class="form-group">
+            <div class="label-row">
+              <label for="retail_price">Retail Price</label>
+              <span id="badge_retail_price" class="field-badge hidden"></span>
+            </div>
+            <input type="text" id="retail_price">
+          </div>
+
+          <!-- Product Details -->
+          <div class="section-title">Product Details</div>
+
+          <div class="form-group full-width">
+            <div class="label-row">
+              <label for="ingredients">Ingredients</label>
+              <span id="badge_ingredients" class="field-badge hidden"></span>
+            </div>
+            <textarea id="ingredients" rows="3"></textarea>
+          </div>
+
+          <div class="form-group full-width">
+            <div class="label-row">
+              <label for="allergens">Allergens</label>
+              <span id="badge_allergens" class="field-badge hidden"></span>
+            </div>
+            <textarea id="allergens" rows="2"></textarea>
+          </div>
+
+          <!-- Receiving -->
+          <div class="section-title">Receiving</div>
+
+          <div class="form-group">
+            <div class="label-row">
+              <label for="vendor_name">Vendor Name</label>
+              <span id="badge_vendor_name" class="field-badge hidden"></span>
+            </div>
+            <input type="text" id="vendor_name">
+          </div>
+
+          <div class="form-group">
+            <div class="label-row">
+              <label for="quantity_received">Quantity Received</label>
+              <span id="badge_quantity_received" class="field-badge hidden"></span>
+            </div>
+            <input type="text" id="quantity_received">
+          </div>
+
+          <!-- Confirm -->
+          <div class="confirm-section">
+            <button class="btn-confirm" id="confirmBtn" onclick="confirmReceiving()">
+              Confirm Receiving
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Success Overlay -->
+  <div id="successOverlay" class="success-overlay hidden">
+    <div class="success-card">
+      <h2>&#10003; Receiving Complete</h2>
+      <p id="successProduct" style="font-size: 18px; color: #e2e8f0; margin-bottom: 16px;"></p>
+      <p>All fields confirmed and saved.</p>
+      <button class="btn-confirm" style="margin-top: 24px; width: 100%;" onclick="resetFlow()">
+        Receive Another Product
+      </button>
+    </div>
+  </div>
+
+  <script src="qrcode.min.js"></script>
+  <script src="socket.io.min.js"></script>
+  <script src="tab.js"></script>
+</body>
+</html>

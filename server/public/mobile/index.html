@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Trakie - Capture</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f172a; color: #e2e8f0;
+      min-height: 100vh; display: flex; flex-direction: column;
+      align-items: center; padding: 20px;
+    }
+    .logo { font-size: 24px; font-weight: 700; margin: 20px 0; color: #38bdf8; }
+    .status {
+      padding: 12px 24px; border-radius: 12px; margin: 16px 0;
+      font-size: 16px; font-weight: 500; text-align: center;
+    }
+    .status.connecting { background: #1e3a5f; color: #7dd3fc; }
+    .status.connected { background: #14532d; color: #86efac; }
+    .status.error { background: #7f1d1d; color: #fca5a5; }
+    .status.processing { background: #713f12; color: #fde68a; }
+    .status.done { background: #14532d; color: #86efac; }
+
+    .capture-section { width: 100%; max-width: 400px; margin-top: 24px; }
+
+    .capture-btn {
+      width: 100%; padding: 18px; border: none; border-radius: 12px;
+      font-size: 18px; font-weight: 600; cursor: pointer;
+      margin-bottom: 12px; transition: transform 0.1s;
+    }
+    .capture-btn:active { transform: scale(0.97); }
+    .capture-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-camera { background: #2563eb; color: white; }
+    .btn-upload { background: #475569; color: white; }
+    .btn-send { background: #16a34a; color: white; }
+    .btn-send:disabled { background: #374151; color: #6b7280; }
+
+    .preview-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+      margin: 16px 0;
+    }
+    .preview-item {
+      position: relative; border-radius: 8px; overflow: hidden;
+      border: 2px solid #334155;
+    }
+    .preview-item img { width: 100%; height: 120px; object-fit: cover; }
+    .preview-item .remove {
+      position: absolute; top: 4px; right: 4px;
+      background: #ef4444; color: white; border: none;
+      border-radius: 50%; width: 24px; height: 24px;
+      font-size: 14px; cursor: pointer; line-height: 24px;
+    }
+    .preview-item .label {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      background: rgba(0,0,0,0.7); padding: 4px 8px;
+      font-size: 12px; text-align: center;
+    }
+
+    .hidden { display: none; }
+    .instructions {
+      color: #94a3b8; font-size: 14px; text-align: center;
+      margin: 12px 0; line-height: 1.5;
+    }
+    .max-notice {
+      color: #fde68a; font-size: 13px; text-align: center;
+      margin-bottom: 8px;
+    }
+
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    @keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+  </style>
+</head>
+<body>
+  <div class="logo">Trakie</div>
+
+  <div id="status" class="status connecting">Connecting to desktop...</div>
+
+  <div id="captureSection" class="capture-section hidden">
+    <p class="instructions">
+      Capture or upload the <strong>invoice</strong> and <strong>product label</strong>.<br>
+      You can add up to 5 images.
+    </p>
+
+    <div id="previewGrid" class="preview-grid"></div>
+    <div id="maxNotice" class="max-notice hidden">Maximum 5 images reached</div>
+
+    <button class="capture-btn btn-camera" id="cameraBtn" onclick="capturePhoto()">
+      Take Photo
+    </button>
+    <button class="capture-btn btn-upload" id="uploadBtn" onclick="uploadFile()">
+      Upload Image
+    </button>
+    <button id="sendBtn" class="capture-btn btn-send" onclick="sendImages()" disabled>
+      Send to Desktop (0 images)
+    </button>
+
+    <input type="file" id="cameraInput" accept="image/*" capture="environment" class="hidden">
+    <input type="file" id="fileInput" accept="image/*" multiple class="hidden">
+  </div>
+
+  <div id="processingSection" class="hidden" style="text-align:center; margin-top: 40px; width: 100%; max-width: 400px;">
+    <div style="font-size: 48px; margin-bottom: 16px; animation: spin 2s linear infinite;">&#9881;</div>
+    <p id="processingText" style="font-size: 18px; font-weight: 600;">Uploading images...</p>
+    <p id="processingSubtext" style="color: #94a3b8; margin-top: 8px;">Sending to server for analysis</p>
+    <div style="margin-top: 24px; background: #1e293b; border-radius: 12px; padding: 16px;">
+      <div style="background:#334155;border-radius:8px;height:6px;overflow:hidden;margin-bottom:12px">
+        <div id="progressBar" style="background:#38bdf8;height:100%;width:10%;border-radius:8px;transition:width 0.5s ease"></div>
+      </div>
+      <p id="progressLabel" style="font-size: 13px; color: #64748b;">This usually takes 5-10 seconds</p>
+    </div>
+  </div>
+
+  <div id="doneSection" class="hidden" style="text-align:center; margin-top: 40px; width: 100%; max-width: 400px;">
+    <div style="width: 80px; height: 80px; border-radius: 50%; background: #14532d; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; font-size: 40px;">&#10003;</div>
+    <p style="font-size: 22px; font-weight: 700; color: #86efac; margin-bottom: 8px;">Extraction Complete</p>
+    <p style="font-size: 16px;" id="doneMessage">Products sent to desktop</p>
+    <div style="margin-top: 24px; background: #1e293b; border-radius: 12px; padding: 20px;">
+      <p style="font-size: 14px; color: #94a3b8; margin-bottom: 12px;">Review and confirm the data on your desktop screen.</p>
+      <p style="font-size: 13px; color: #64748b;">You can close this page or scan another QR code.</p>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const sessionToken = params.get('s');
+    const images = []; // {base64, name}
+    const MAX_IMAGES = 5;
+
+    // State machine: connecting -> capture -> sending -> processing -> done | error
+    let currentState = 'connecting';
+
+    function setState(state) {
+      currentState = state;
+      document.getElementById('captureSection').classList.add('hidden');
+      document.getElementById('processingSection').classList.add('hidden');
+      document.getElementById('doneSection').classList.add('hidden');
+
+      if (state === 'capture') {
+        document.getElementById('captureSection').classList.remove('hidden');
+      } else if (state === 'sending' || state === 'processing') {
+        document.getElementById('processingSection').classList.remove('hidden');
+      } else if (state === 'done') {
+        document.getElementById('doneSection').classList.remove('hidden');
+      }
+    }
+
+    if (!sessionToken) {
+      document.getElementById('status').textContent = 'Invalid link. Scan the QR code again.';
+      document.getElementById('status').className = 'status error';
+      // Stop here - don't connect
+      throw new Error('No session token');
+    }
+
+    // Parse device info
+    const ua = navigator.userAgent;
+    let deviceName = 'Mobile Browser';
+    if (/iPhone/.test(ua)) deviceName = 'iPhone - ' + (/CriOS/.test(ua) ? 'Chrome' : /Safari/.test(ua) ? 'Safari' : 'Browser');
+    else if (/Android/.test(ua)) {
+      const match = ua.match(/;\s*([^;)]+)\s*Build/);
+      deviceName = (match ? match[1].trim() : 'Android') + ' - ' + (/Chrome/.test(ua) ? 'Chrome' : 'Browser');
+    } else if (/iPad/.test(ua)) deviceName = 'iPad - Safari';
+
+    // Connect
+    const serverUrl = window.location.origin;
+    const socket = io(serverUrl);
+
+    socket.on('connect', () => {
+      socket.emit('join-session', { token: sessionToken, device: deviceName }, (res) => {
+        if (res.error) {
+          document.getElementById('status').textContent = res.error === 'Session already paired'
+            ? 'Another phone is already connected to this session.'
+            : 'Session expired. Generate a new QR code.';
+          document.getElementById('status').className = 'status error';
+        } else {
+          document.getElementById('status').textContent = 'Connected to desktop';
+          document.getElementById('status').className = 'status connected';
+          if (currentState === 'connecting') setState('capture');
+        }
+      });
+    });
+
+    socket.on('connect_error', () => {
+      document.getElementById('status').textContent = 'Cannot reach server. Check your connection.';
+      document.getElementById('status').className = 'status error';
+    });
+
+    socket.on('processing-started', () => {
+      document.getElementById('processingText').textContent = 'Analyzing with AI...';
+      document.getElementById('processingSubtext').textContent = 'Extracting product data from images';
+      document.getElementById('status').textContent = 'Processing images...';
+      document.getElementById('status').className = 'status processing';
+      setState('processing');
+
+      // Switch to indeterminate pulse for AI wait
+      const bar = document.getElementById('progressBar');
+      const label = document.getElementById('progressLabel');
+      if (bar) {
+        bar.style.width = '100%';
+        bar.style.animation = 'pulse 1.5s ease-in-out infinite';
+        bar.style.opacity = '0.7';
+        label.textContent = 'Waiting for AI extraction...';
+      }
+    });
+
+    socket.on('extraction-complete', (data) => {
+      document.getElementById('doneMessage').textContent =
+        `${data.count} product(s) sent to desktop`;
+      document.getElementById('status').textContent = 'Extraction complete';
+      document.getElementById('status').className = 'status done';
+      setState('done');
+    });
+
+    socket.on('extraction-error', (data) => {
+      document.getElementById('status').textContent = 'Extraction failed: ' + data.message;
+      document.getElementById('status').className = 'status error';
+      setState('capture');
+    });
+
+    socket.on('desktop-disconnected', () => {
+      document.getElementById('status').textContent = 'Desktop disconnected';
+      document.getElementById('status').className = 'status error';
+    });
+
+    // Image capture
+    function capturePhoto() {
+      document.getElementById('cameraInput').click();
+    }
+
+    function uploadFile() {
+      document.getElementById('fileInput').click();
+    }
+
+    document.getElementById('cameraInput').addEventListener('change', handleFiles);
+    document.getElementById('fileInput').addEventListener('change', handleFiles);
+
+    function handleFiles(e) {
+      for (const file of e.target.files) {
+        if (images.length >= MAX_IMAGES) break;
+        compressAndAdd(file);
+      }
+      e.target.value = '';
+    }
+
+    // Compress images to max 2048px for faster upload + good enough for OCR
+    function compressAndAdd(file) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const img = new Image();
+        img.onload = () => {
+          const MAX_SIZE = 2048;
+          let { width, height } = img;
+          if (width > MAX_SIZE || height > MAX_SIZE) {
+            const ratio = Math.min(MAX_SIZE / width, MAX_SIZE / height);
+            width = Math.round(width * ratio);
+            height = Math.round(height * ratio);
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+          const base64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+          images.push({ base64, name: file.name });
+          updatePreviews();
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function removeImage(idx) {
+      images.splice(idx, 1);
+      updatePreviews();
+    }
+
+    function updatePreviews() {
+      const grid = document.getElementById('previewGrid');
+      grid.innerHTML = images.map((img, i) => `
+        <div class="preview-item">
+          <img src="data:image/jpeg;base64,${img.base64}" alt="Image ${i+1}">
+          <button class="remove" onclick="removeImage(${i})">x</button>
+          <div class="label">Image ${i+1}</div>
+        </div>
+      `).join('');
+
+      const atMax = images.length >= MAX_IMAGES;
+      document.getElementById('cameraBtn').disabled = atMax;
+      document.getElementById('uploadBtn').disabled = atMax;
+      document.getElementById('maxNotice').classList.toggle('hidden', !atMax);
+
+      const btn = document.getElementById('sendBtn');
+      btn.disabled = images.length === 0;
+      btn.textContent = `Send to Desktop (${images.length} image${images.length !== 1 ? 's' : ''})`;
+    }
+
+    function sendImages() {
+      document.getElementById('status').textContent = 'Uploading images...';
+      document.getElementById('status').className = 'status processing';
+      setState('sending');
+
+      const bar = document.getElementById('progressBar');
+      const label = document.getElementById('progressLabel');
+      const total = images.length;
+      let sent = 0;
+
+      images.forEach((img, i) => {
+        socket.emit('upload-image', {
+          token: sessionToken,
+          image: img.base64,
+          index: i + 1,
+          total: total,
+        }, () => {
+          // Ack callback - track real upload progress
+          sent++;
+          if (bar) {
+            bar.style.width = Math.round((sent / total) * 50) + '%';
+            label.textContent = `Uploaded ${sent} of ${total} images`;
+          }
+        });
+        // Also update optimistically since ack may not fire
+        if (bar) {
+          bar.style.width = Math.round(((i + 1) / total) * 50) + '%';
+          label.textContent = `Sending image ${i + 1} of ${total}...`;
+        }
+      });
+    }
+  </script>
+</body>
+</html>
