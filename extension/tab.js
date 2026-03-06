@@ -356,6 +356,11 @@ function resetFlow() {
   selectProduct(currentProductIndex + 1);
 }
 
+// --- Button Bindings (no inline handlers — CSP blocks them in extensions) ---
+document.getElementById("confirmBtn").addEventListener("click", confirmReceiving);
+document.getElementById("nextProductBtn").addEventListener("click", resetFlow);
+document.getElementById("newScanBtn").addEventListener("click", () => location.reload());
+
 // --- Helpers ---
 function truncate(str, n) {
   if (!str) return "";
