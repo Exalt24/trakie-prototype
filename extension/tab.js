@@ -243,20 +243,53 @@ function fillProduct(index) {
 const PRICE_FIELDS = ["wholesale_cost", "retail_price"];
 const REQUIRED_FIELDS = ["product_name", "brand", "category", "vendor_name", "quantity_received"];
 
-// Clear validation styling when user starts typing
-[...REQUIRED_FIELDS, ...PRICE_FIELDS].forEach((id) => {
+// Live validation — flag required fields red when cleared, restore when filled
+REQUIRED_FIELDS.forEach((id) => {
   const el = document.getElementById(id);
   if (!el) return;
   el.addEventListener("input", () => {
-    if (!el.classList.contains("validation-error")) return;
-    el.style.borderColor = "";
-    el.classList.remove("field-needs-review", "validation-error", "field-filling");
-    const group = el.closest(".form-group");
-    if (group) {
-      const badge = group.querySelector(".field-badge");
-      if (badge) {
-        badge.textContent = "";
-        badge.classList.add("hidden");
+    if (!el.value.trim()) {
+      flagField(el);
+    } else if (el.classList.contains("validation-error")) {
+      el.style.borderColor = "";
+      el.classList.remove("field-needs-review", "validation-error", "field-filling");
+      const group = el.closest(".form-group");
+      if (group) {
+        const badge = group.querySelector(".field-badge");
+        if (badge) { badge.textContent = ""; badge.classList.add("hidden"); }
+      }
+    }
+  });
+});
+
+// Live price format check
+PRICE_FIELDS.forEach((id) => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener("input", () => {
+    const val = el.value.trim();
+    if (!val) {
+      if (el.classList.contains("validation-error")) {
+        el.style.borderColor = "";
+        el.classList.remove("field-needs-review", "validation-error", "field-filling");
+        const group = el.closest(".form-group");
+        if (group) {
+          const badge = group.querySelector(".field-badge");
+          if (badge) { badge.textContent = ""; badge.classList.add("hidden"); }
+        }
+      }
+      return;
+    }
+    const cleaned = val.replace(/[$,\s]/g, "");
+    if (cleaned && isNaN(Number(cleaned))) {
+      flagField(el);
+    } else if (el.classList.contains("validation-error")) {
+      el.style.borderColor = "";
+      el.classList.remove("field-needs-review", "validation-error", "field-filling");
+      const group = el.closest(".form-group");
+      if (group) {
+        const badge = group.querySelector(".field-badge");
+        if (badge) { badge.textContent = ""; badge.classList.add("hidden"); }
       }
     }
   });
