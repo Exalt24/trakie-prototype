@@ -229,6 +229,26 @@ function fillProduct(index) {
 const PRICE_FIELDS = ["wholesale_cost", "retail_price"];
 const REQUIRED_FIELDS = ["product_name", "brand", "category", "vendor_name", "quantity_received"];
 
+function flagField(el) {
+  // Remove any existing confidence class so red actually shows
+  el.classList.remove("field-high", "field-medium", "field-needs-review", "field-filling");
+  // Force reflow so animation restarts
+  void el.offsetWidth;
+  el.classList.add("field-needs-review", "field-filling");
+  setTimeout(() => el.classList.remove("field-filling"), 500);
+
+  // Also update the badge
+  const group = el.closest(".form-group");
+  if (group) {
+    const badge = group.querySelector(".field-badge");
+    if (badge) {
+      badge.classList.remove("hidden", "badge-high", "badge-medium", "badge-needs-review");
+      badge.textContent = "REQUIRED";
+      badge.classList.add("badge-needs-review");
+    }
+  }
+}
+
 function validateFields() {
   let hasIssues = false;
 
@@ -237,9 +257,7 @@ function validateFields() {
     const el = document.getElementById(id);
     if (el && !el.value.trim()) {
       hasIssues = true;
-      el.classList.add("field-needs-review");
-      el.classList.add("field-filling");
-      setTimeout(() => el.classList.remove("field-filling"), 500);
+      flagField(el);
     }
   });
 
@@ -250,12 +268,16 @@ function validateFields() {
       const cleaned = el.value.replace(/[$,\s]/g, "");
       if (cleaned && isNaN(Number(cleaned))) {
         hasIssues = true;
-        el.classList.add("field-needs-review");
-        el.classList.add("field-filling");
-        setTimeout(() => el.classList.remove("field-filling"), 500);
+        flagField(el);
       }
     }
   });
+
+  // Scroll to first bad field
+  if (hasIssues) {
+    const firstBad = document.querySelector(".field-needs-review");
+    if (firstBad) firstBad.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
 
   return hasIssues;
 }
@@ -275,7 +297,7 @@ function updateConfirmButton() {
 let confirmedCount = 0;
 
 function confirmReceiving() {
-  validateFields();
+  if (validateFields()) return;
   confirmedCount++;
 
   const productName = document.getElementById("product_name").value || "Product";
