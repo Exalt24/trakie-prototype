@@ -173,8 +173,22 @@ function selectProduct(index) {
 
 function fillProduct(index) {
   const product = productsData[index];
-  let delay = 0;
 
+  // Clear ALL fields first so stale values from previous product don't linger
+  FIELD_IDS.forEach((fieldId) => {
+    const el = document.getElementById(fieldId);
+    if (!el) return;
+    el.value = "";
+    el.className = "";
+    const badge = document.getElementById(`badge_${fieldId}`);
+    if (badge) {
+      badge.textContent = "";
+      badge.className = "field-badge hidden";
+    }
+  });
+
+  // Fill with new product data
+  let delay = 0;
   FIELD_IDS.forEach((fieldId) => {
     const fieldData = product[fieldId];
     if (!fieldData) return;
@@ -185,7 +199,6 @@ function fillProduct(index) {
 
       // Set value
       if (el.tagName === "SELECT") {
-        // Try to match option
         const opt = Array.from(el.options).find(
           (o) => o.value.toLowerCase() === (fieldData.value || "").toLowerCase()
         );
@@ -229,12 +242,30 @@ function fillProduct(index) {
 const PRICE_FIELDS = ["wholesale_cost", "retail_price"];
 const REQUIRED_FIELDS = ["product_name", "brand", "category", "vendor_name", "quantity_received"];
 
+// Clear validation styling when user starts typing
+[...REQUIRED_FIELDS, ...PRICE_FIELDS].forEach((id) => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener("input", () => {
+    if (!el.classList.contains("validation-error")) return;
+    el.classList.remove("field-needs-review", "validation-error", "field-filling");
+    const group = el.closest(".form-group");
+    if (group) {
+      const badge = group.querySelector(".field-badge");
+      if (badge) {
+        badge.textContent = "";
+        badge.classList.add("hidden");
+      }
+    }
+  });
+});
+
 function flagField(el) {
   // Remove any existing confidence class so red actually shows
-  el.classList.remove("field-high", "field-medium", "field-needs-review", "field-filling");
+  el.classList.remove("field-high", "field-medium", "field-needs-review", "field-filling", "validation-error");
   // Force reflow so animation restarts
   void el.offsetWidth;
-  el.classList.add("field-needs-review", "field-filling");
+  el.classList.add("field-needs-review", "validation-error", "field-filling");
   setTimeout(() => el.classList.remove("field-filling"), 500);
 
   // Also update the badge
@@ -273,9 +304,9 @@ function validateFields() {
     }
   });
 
-  // Scroll to first bad field
+  // Scroll to first validation-flagged field (not AI-flagged ones)
   if (hasIssues) {
-    const firstBad = document.querySelector(".field-needs-review");
+    const firstBad = document.querySelector(".validation-error");
     if (firstBad) firstBad.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
