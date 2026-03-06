@@ -32,14 +32,19 @@ socket.on("connect_error", () => {
 let phoneInfoStr = "";
 
 socket.on("phone-connected", (data) => {
-  setStatus("Phone Connected", "connected");
-  document.getElementById("qrSection").classList.add("hidden");
-  document.getElementById("connectedSection").classList.remove("hidden");
-  document.getElementById("doneLeftSection").classList.add("hidden");
   if (data && data.device) {
     phoneInfoStr = data.device;
     document.getElementById("phoneInfo").textContent = data.device;
   }
+  // If results already showing, don't reset left panel back to connected state
+  if (productsData) {
+    setStatus("Phone Connected", "connected");
+    return;
+  }
+  setStatus("Phone Connected", "connected");
+  document.getElementById("qrSection").classList.add("hidden");
+  document.getElementById("connectedSection").classList.remove("hidden");
+  document.getElementById("doneLeftSection").classList.add("hidden");
 });
 
 socket.on("phone-disconnected", () => {
