@@ -180,6 +180,7 @@ function fillProduct(index) {
     if (!el) return;
     el.value = "";
     el.className = "";
+    el.style.borderColor = "";
     const badge = document.getElementById(`badge_${fieldId}`);
     if (badge) {
       badge.textContent = "";
@@ -248,6 +249,7 @@ const REQUIRED_FIELDS = ["product_name", "brand", "category", "vendor_name", "qu
   if (!el) return;
   el.addEventListener("input", () => {
     if (!el.classList.contains("validation-error")) return;
+    el.style.borderColor = "";
     el.classList.remove("field-needs-review", "validation-error", "field-filling");
     const group = el.closest(".form-group");
     if (group) {
@@ -263,9 +265,12 @@ const REQUIRED_FIELDS = ["product_name", "brand", "category", "vendor_name", "qu
 function flagField(el) {
   // Remove any existing confidence class so red actually shows
   el.classList.remove("field-high", "field-medium", "field-needs-review", "field-filling", "validation-error");
-  // Force reflow so animation restarts
+  // Force red via inline style — cannot be overridden by any CSS class or specificity
+  el.style.borderColor = "#ef4444";
+  el.classList.add("validation-error");
+  // Flash animation
   void el.offsetWidth;
-  el.classList.add("field-needs-review", "validation-error", "field-filling");
+  el.classList.add("field-filling");
   setTimeout(() => el.classList.remove("field-filling"), 500);
 
   // Also update the badge
