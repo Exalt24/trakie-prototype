@@ -119,34 +119,56 @@ function showForm(products) {
   document.getElementById("emptyState").classList.add("hidden");
   document.getElementById("formSection").classList.remove("hidden");
 
-  // Build product tabs
+  // Build product list with search
   if (products.length > 1) {
-    const selector = document.getElementById("productSelector");
-    // Keep the label, remove old tabs
-    while (selector.children.length > 1) selector.removeChild(selector.lastChild);
+    const search = document.getElementById("productSearch");
+    const list = document.getElementById("productList");
+    const count = document.getElementById("productCount");
 
-    products.forEach((p, i) => {
-      const tab = document.createElement("button");
-      tab.className = "product-tab" + (i === 0 ? " active" : "");
-      tab.textContent = truncate(p.product_name.value, 30) || `Product ${i + 1}`;
-      tab.onclick = () => selectProduct(i);
-      selector.appendChild(tab);
-    });
+    // Only show search if enough products to need it
+    if (products.length > 5) {
+      search.classList.remove("hidden");
+    }
+
+    buildProductList(products, list);
+    list.classList.remove("hidden");
+    count.textContent = `${products.length} products`;
+    count.classList.remove("hidden");
+
+    search.oninput = () => {
+      const q = search.value.toLowerCase();
+      buildProductList(products, list, q);
+    };
   } else {
     document.getElementById("productSelector").classList.add("hidden");
   }
 
   // Fill first product with animation
   fillProduct(0);
+  updateConfirmButton();
+}
+
+function buildProductList(products, list, filter = "") {
+  list.innerHTML = "";
+  products.forEach((p, i) => {
+    const name = p.product_name.value || `Product ${i + 1}`;
+    if (filter && !name.toLowerCase().includes(filter)) return;
+    const btn = document.createElement("button");
+    btn.className = "product-item" + (i === currentProductIndex ? " active" : "");
+    btn.dataset.index = i;
+    btn.textContent = `${i + 1}. ${truncate(name, 50)}`;
+    btn.onclick = () => selectProduct(i);
+    list.appendChild(btn);
+  });
 }
 
 function selectProduct(index) {
   currentProductIndex = index;
-  // Update tab styling
-  document.querySelectorAll(".product-tab").forEach((tab, i) => {
-    tab.classList.toggle("active", i === index);
+  document.querySelectorAll(".product-item").forEach((item) => {
+    item.classList.toggle("active", Number(item.dataset.index) === index);
   });
   fillProduct(index);
+  updateConfirmButton();
 }
 
 function fillProduct(index) {
@@ -203,12 +225,59 @@ function fillProduct(index) {
   });
 }
 
+// --- Validation ---
+const PRICE_FIELDS = ["wholesale_cost", "retail_price"];
+const REQUIRED_FIELDS = ["product_name", "brand", "category", "vendor_name", "quantity_received"];
+
+function validateFields() {
+  let hasIssues = false;
+
+  // Check required fields
+  REQUIRED_FIELDS.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el && !el.value.trim()) {
+      hasIssues = true;
+      el.classList.add("field-needs-review");
+      el.classList.add("field-filling");
+      setTimeout(() => el.classList.remove("field-filling"), 500);
+    }
+  });
+
+  // Check price format (should look like a number or $number)
+  PRICE_FIELDS.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el && el.value.trim()) {
+      const cleaned = el.value.replace(/[$,\s]/g, "");
+      if (cleaned && isNaN(Number(cleaned))) {
+        hasIssues = true;
+        el.classList.add("field-needs-review");
+        el.classList.add("field-filling");
+        setTimeout(() => el.classList.remove("field-filling"), 500);
+      }
+    }
+  });
+
+  return hasIssues;
+}
+
 // --- Confirm ---
+function updateConfirmButton() {
+  const btn = document.getElementById("confirmBtn");
+  if (!productsData || productsData.length <= 1) return;
+  const remaining = productsData.length - 1 - currentProductIndex;
+  if (remaining > 0) {
+    btn.textContent = `Confirm & Next (${remaining} remaining)`;
+  } else {
+    btn.textContent = "Confirm Receiving";
+  }
+}
+
 function confirmReceiving() {
+  validateFields();
+
   const productName = document.getElementById("product_name").value || "Product";
   document.getElementById("successProduct").textContent = productName;
 
-  // Update button text based on remaining products
   const resetBtn = document.querySelector("#successOverlay .btn-confirm");
   if (productsData && currentProductIndex < productsData.length - 1) {
     const next = currentProductIndex + 2;
