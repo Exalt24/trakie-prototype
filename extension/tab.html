@@ -220,14 +220,26 @@
     </div>
   </div>
 
-  <!-- Success Overlay -->
+  <!-- Success Overlay (per product) -->
   <div id="successOverlay" class="success-overlay hidden">
     <div class="success-card">
-      <h2>&#10003; Receiving Complete</h2>
-      <p id="successProduct" style="font-size: 18px; color: #e2e8f0; margin-bottom: 16px;"></p>
-      <p>All fields confirmed and saved.</p>
-      <button class="btn-confirm" style="margin-top: 24px; width: 100%;" onclick="resetFlow()">
-        Receive Another Product
+      <h2>&#10003; Product Confirmed</h2>
+      <p id="successProduct" style="font-size: 18px; color: #e2e8f0; margin-bottom: 8px;"></p>
+      <p id="successProgress" style="font-size: 13px; color: #94a3b8; margin-bottom: 16px;"></p>
+      <button class="btn-confirm" style="margin-top: 12px; width: 100%;" onclick="resetFlow()">
+        Next Product
+      </button>
+    </div>
+  </div>
+
+  <!-- All Done Overlay -->
+  <div id="allDoneOverlay" class="success-overlay hidden">
+    <div class="success-card">
+      <h2 style="font-size: 28px;">&#10003; All Products Received</h2>
+      <p id="allDoneSummary" style="font-size: 16px; color: #e2e8f0; margin-bottom: 8px;"></p>
+      <p style="color: #94a3b8;">All fields confirmed and saved.</p>
+      <button class="btn-confirm" style="margin-top: 24px; width: 100%;" onclick="location.reload()">
+        Start New Scan
       </button>
     </div>
   </div>

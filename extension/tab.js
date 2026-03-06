@@ -272,32 +272,37 @@ function updateConfirmButton() {
   }
 }
 
+let confirmedCount = 0;
+
 function confirmReceiving() {
   validateFields();
+  confirmedCount++;
 
   const productName = document.getElementById("product_name").value || "Product";
-  document.getElementById("successProduct").textContent = productName;
+  const isLast = !productsData || currentProductIndex >= productsData.length - 1;
 
-  const resetBtn = document.querySelector("#successOverlay .btn-confirm");
-  if (productsData && currentProductIndex < productsData.length - 1) {
+  if (isLast) {
+    // Show all-done overlay
+    const total = productsData ? productsData.length : 1;
+    document.getElementById("allDoneSummary").textContent =
+      `${total} product${total > 1 ? "s" : ""} confirmed`;
+    document.getElementById("allDoneOverlay").classList.remove("hidden");
+  } else {
+    // Show per-product success
     const next = currentProductIndex + 2;
     const total = productsData.length;
-    resetBtn.textContent = `Next Product (${next} of ${total})`;
-  } else {
-    resetBtn.textContent = "Start New Scan";
+    document.getElementById("successProduct").textContent = productName;
+    document.getElementById("successProgress").textContent =
+      `${next - 1} of ${total} confirmed`;
+    document.querySelector("#successOverlay .btn-confirm").textContent =
+      `Next Product (${next} of ${total})`;
+    document.getElementById("successOverlay").classList.remove("hidden");
   }
-
-  document.getElementById("successOverlay").classList.remove("hidden");
 }
 
 function resetFlow() {
   document.getElementById("successOverlay").classList.add("hidden");
-
-  if (productsData && currentProductIndex < productsData.length - 1) {
-    selectProduct(currentProductIndex + 1);
-  } else {
-    location.reload();
-  }
+  selectProduct(currentProductIndex + 1);
 }
 
 // --- Helpers ---
