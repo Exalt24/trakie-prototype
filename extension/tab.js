@@ -263,17 +263,13 @@ const REQUIRED_FIELDS = ["product_name", "brand", "category", "vendor_name", "qu
 });
 
 function flagField(el) {
-  // Remove any existing confidence class so red actually shows
   el.classList.remove("field-high", "field-medium", "field-needs-review", "field-filling", "validation-error");
-  // Force red via inline style — cannot be overridden by any CSS class or specificity
   el.style.borderColor = "#ef4444";
   el.classList.add("validation-error");
-  // Flash animation
   void el.offsetWidth;
   el.classList.add("field-filling");
   setTimeout(() => el.classList.remove("field-filling"), 500);
 
-  // Also update the badge
   const group = el.closest(".form-group");
   if (group) {
     const badge = group.querySelector(".field-badge");
@@ -288,7 +284,6 @@ function flagField(el) {
 function validateFields() {
   let hasIssues = false;
 
-  // Check required fields
   REQUIRED_FIELDS.forEach((id) => {
     const el = document.getElementById(id);
     if (el && !el.value.trim()) {
@@ -297,7 +292,6 @@ function validateFields() {
     }
   });
 
-  // Check price format (should look like a number or $number)
   PRICE_FIELDS.forEach((id) => {
     const el = document.getElementById(id);
     if (el && el.value.trim()) {
@@ -309,7 +303,6 @@ function validateFields() {
     }
   });
 
-  // Scroll to first validation-flagged field (not AI-flagged ones)
   if (hasIssues) {
     const firstBad = document.querySelector(".validation-error");
     if (firstBad) firstBad.scrollIntoView({ behavior: "smooth", block: "center" });
