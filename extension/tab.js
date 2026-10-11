@@ -1,5 +1,16 @@
 // --- Configuration ---
-const SERVER_URL = "http://192.168.254.114:3000"; // Change to Render URL for production
+// Server address. Order: ?server=<url> on this tab's address (remembered), then the
+// remembered value, then localhost. A real phone needs your machine's LAN address here.
+const DEFAULT_SERVER_URL = "http://localhost:3000";
+const SERVER_URL = (() => {
+  try {
+    const fromQuery = new URLSearchParams(location.search).get("server");
+    if (fromQuery) localStorage.setItem("trakie_server_url", fromQuery);
+    return fromQuery || localStorage.getItem("trakie_server_url") || DEFAULT_SERVER_URL;
+  } catch (e) {
+    return DEFAULT_SERVER_URL;
+  }
+})().replace(/\/+$/, "");
 
 // --- State ---
 let sessionToken = null;

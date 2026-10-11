@@ -1,6 +1,12 @@
 const OpenAI = require("openai");
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// Base URL and model are configurable so any OpenAI-compatible endpoint with vision
+// works (for example a local Ollama at http://localhost:11434/v1). Defaults are unchanged.
+const MODEL = process.env.OPENAI_MODEL || "o4-mini";
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+  baseURL: process.env.OPENAI_BASE_URL || undefined,
+});
 
 // Validate API key at startup
 if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === "your-api-key-here") {
@@ -325,6 +331,37 @@ IMAGE READING TIPS:
 - Scan the ENTIRE label surface, not just the obvious front
 - Look for Nutrition Facts panels, warning sections, and fine print`;
 
+const PRODUCT_FIELDS =
+  EXTRACTION_TOOLS[0].function.parameters.properties.products.items.required;
+const CONFIDENCES = ["HIGH", "MEDIUM", "NEEDS_REVIEW"];
+
+function normalizeProduct(raw) {
+  const product = {};
+  for (const field of PRODUCT_FIELDS) {
+    const v = raw[field];
+    if (v && typeof v === "object" && "value" in v) {
+      const value = v.value == null ? "" : String(v.value);
+      product[field] = {
+        value,
+        confidence: CONFIDENCES.includes(v.confidence)
+          ? v.confidence
+          : value
+            ? "MEDIUM"
+            : "NEEDS_REVIEW",
+      };
+    } else if (typeof v === "string" || typeof v === "number") {
+      // A bare value carries no confidence from the model, so it is never marked HIGH.
+      product[field] = {
+        value: String(v),
+        confidence: String(v) ? "MEDIUM" : "NEEDS_REVIEW",
+      };
+    } else {
+      product[field] = { value: "", confidence: "NEEDS_REVIEW" };
+    }
+  }
+  return product;
+}
+
 async function extractFromImages(imageBuffers) {
   if (!imageBuffers || imageBuffers.length === 0) {
     throw new Error("No images provided");
@@ -341,7 +378,7 @@ async function extractFromImages(imageBuffers) {
   let response;
   try {
     response = await openai.chat.completions.create({
-      model: "o4-mini",
+      model: MODEL,
       messages: [
         {
           role: "developer",
@@ -363,8 +400,12 @@ async function extractFromImages(imageBuffers) {
         type: "function",
         function: { name: "extract_product_data" },
       },
-      reasoning_effort: "high",
+      reasoning_effort: process.env.OPENAI_REASONING_EFFORT || "high",
       max_completion_tokens: 8192,
+      // Not sent by default: o4-mini rejects it. Set it for local models, where 0 steadies the output.
+      ...(process.env.OPENAI_TEMPERATURE
+        ? { temperature: Number(process.env.OPENAI_TEMPERATURE) }
+        : {}),
     });
   } catch (err) {
     if (err.status === 429) {
@@ -410,6 +451,14 @@ async function extractFromImages(imageBuffers) {
       "No products detected in images. Try capturing clearer photos."
     );
   }
+
+  // OpenAI enforces the strict schema above. Other OpenAI-compatible servers (a local
+  // Ollama, for one) do not, and small models sometimes return a bare string, null or a
+  // missing key for a field. Normalise every product to the 16 {value, confidence} fields
+  // so one sloppy field flags itself for review instead of failing the whole extraction.
+  result.products = result.products
+    .filter((p) => p && typeof p === "object")
+    .map(normalizeProduct);
 
   // Detailed logging
   console.log("\n========== OCR EXTRACTION RESULTS ==========");
