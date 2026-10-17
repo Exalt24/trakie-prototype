@@ -4,7 +4,7 @@
 
 *Recorded on a local stack: the server, the loaded extension and an emulated phone, with a local vision model (Qwen3.5 9B on Ollama) doing the reading. The invoice and label are made-up samples (`docs/sample/`).*
 
-Prototype of the core Trakie flow. A dispensary worker scans a QR code on their desktop, captures invoice and label photos on their phone, and the receiving form fills itself. Built for the vault room at 9am with three deliveries waiting.
+Chrome extension that pairs with a phone by QR so invoice photos fill a desktop receiving form via a vision model. A dispensary worker scans a QR code on their desktop, captures invoice and label photos on their phone, and the receiving form fills itself. Built for the vault room at 9am with three deliveries waiting.
 
 ## Architecture
 
