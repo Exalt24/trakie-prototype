@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install server dependencies
+        working-directory: server
+        run: npm ci
+
+      - name: Syntax check server and extension scripts
+        run: |
+          for f in server/index.js server/ocr.js extension/popup.js extension/tab.js; do
+            node --check "$f"
+          done
+          node -e "JSON.parse(require('fs').readFileSync('extension/manifest.json', 'utf8'))"
+
+      - name: Boot the server and hit it
+        working-directory: server
+        env:
+          OPENAI_API_KEY: dummy-key-not-used
+          PORT: "3917"
+        run: |
+          node index.js &
+          server_pid=$!
+          for i in $(seq 1 30); do
+            curl -fs http://localhost:3917/ && break
+            sleep 0.5
+          done
+          curl -fs http://localhost:3917/ | grep '"status":"ok"'
+          curl -fs -o /dev/null http://localhost:3917/m/
+          kill "$server_pid"
