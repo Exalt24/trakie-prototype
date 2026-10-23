@@ -45,16 +45,16 @@ Phone (camera) --> Socket.IO --> Server (vision model) --> Socket.IO --> Extensi
 
 | Layer | Technologies |
 |-------|-------------|
-| Server | Node.js, Express, Socket.IO 4.x, OpenAI SDK (o4-mini by default, any OpenAI-compatible vision endpoint works) |
+| Server | Node.js, Express, Socket.IO 4.x, OpenAI SDK (o4-mini by default, any OpenAI-compatible vision endpoint works), AWS SDK v3 for S3 presigned uploads |
 | Extension | Chrome Manifest V3, vanilla JS |
 | Mobile | Vanilla HTML/JS, served by Express |
-| Storage | None - session state in memory (prototype) |
+| Storage | Session state in memory (prototype). Optional S3-compatible object storage carries the photos in transit |
 
 ## Setup
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 20+ (22 to run the tests)
 - Chrome
 - An OpenAI API key, or a local vision model (see below)
 
@@ -119,6 +119,62 @@ With thinking left on, the 9B model spent its whole token budget reasoning and r
 
 **What to expect from a small local model.** It reads the documents but is not as careful as the model this prompt was written for. In the recording every field shows MEDIUM, because the model returns bare values with no confidence and the server marks those MEDIUM. It also put the invoice line total in Retail Price, and for the product that had no label photo it invented an expiry date, a barcode, ingredients and allergens. The recording shows the clerk clearing those before confirming. That review step is the reason the form exists. The extraction accuracy of the default o4-mini setup was not re-measured here.
 
+## Direct to object storage
+
+Set `S3_BUCKET` and the phone stops sending photos through the WebSocket. For each photo it asks the server for a presigned URL (`request-upload-url`), PUTs the compressed JPEG straight to the bucket, then tells the server it is there (`image-uploaded`). The server fetches the object, runs the same code as the base64 path (progress events, the processing guard, the vision call), and deletes the session's objects once the result or the error is out, or when the desktop leaves. With `S3_BUCKET` unset nothing changes: the join reply says `uploads: "socket"` and the phone sends base64 as before.
+
+What the server checks before it signs and before it reads:
+
+- The token is 32 hex characters, the index is 0 to total minus 1, total is 1 to 10, the type is JPEG, PNG or WebP, the size is 1 byte to 10 MB (`server/uploads.js`).
+- The URL signs Content-Type and Content-Length and expires in 300 seconds, so the store itself refuses another type or a body of another size.
+- A key is accepted only as exactly `sessions/<this session's token>/<n>.jpg`; a traversal, another session's prefix or an extra segment is refused before the store is asked.
+- Only the phone paired to the session can ask for a URL or report an upload.
+
+| Variable | What it does |
+|----------|--------------|
+| `S3_BUCKET` | Turns the feature on. The bucket must exist |
+| `S3_ENDPOINT` | Optional. Set it for MinIO or another S3-compatible store; path-style addressing is then used |
+| `S3_REGION` | Optional, default `us-east-1` (or `AWS_REGION`) |
+| `S3_FORCE_PATH_STYLE` | Optional, `1` forces path-style on a store without `S3_ENDPOINT` |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | The only place credentials are read from |
+
+Try it against MinIO:
+
+```bash
+docker run -d --name trakie-minio -p 59000:9000 -e MINIO_ROOT_USER=minio -e MINIO_ROOT_PASSWORD=minio12345 pgsty/minio:RELEASE.2026-08-04T00-00-00Z server /data
+# create the bucket once (console at http://localhost:59000 or any S3 client), then:
+S3_BUCKET=trakie S3_ENDPOINT=http://localhost:59000 AWS_ACCESS_KEY_ID=minio AWS_SECRET_ACCESS_KEY=minio12345 npm start
+```
+
+`minio/minio` is no longer on Docker Hub and the quay.io copy refuses anonymous pulls, so the tests and CI use the `pgsty/minio` fork pinned by tag.
+
+**Bucket CORS.** The phone page PUTs from the server's own origin, so a real bucket needs a rule that allows that origin, the PUT method and the Content-Type header:
+
+```json
+[{"AllowedOrigins": ["https://your-server-origin"], "AllowedMethods": ["PUT"], "AllowedHeaders": ["Content-Type"], "MaxAgeSeconds": 300}]
+```
+
+Also add a lifecycle rule that expires `sessions/` after a day, as a backstop for photos uploaded by a phone that vanished before the server could delete them.
+
+**Tests.** `cd server && npm test` runs the Node test runner. The MinIO tests skip with a message when nothing answers on `localhost:59000`; with `TRAKIE_REQUIRE_MINIO=1` (what CI sets) a missing container fails them instead. `node tests/mutants.mjs` removes one guard at a time in a temp copy and requires the suite to fail each time. Run on 2026-10-24 against MinIO `RELEASE.2026-08-04T00-00-00Z`:
+
+| Part | Count |
+|------|-------|
+| Unit tests for `uploads.js` (generated table of bad tokens, indexes, totals, types, sizes and key shapes, with positive controls) | 127 |
+| Storage tests against the MinIO container | 7 |
+| Storage tests that need no container | 3 |
+| End to end over Socket.IO against MinIO | 7 |
+| End to end with the server as a child process (base64 path, production refusal) | 2 |
+| Mutants removed one at a time and caught | 19 of 19 |
+
+**Limits.**
+
+- Tested on MinIO, not on AWS S3. MinIO is S3-compatible, but a signing detail or an error code could differ on the real service.
+- Bucket CORS was not exercised from a real phone browser. The phone page was driven once in headless Chromium against the local server and MinIO, which answers every origin, so a bucket CORS rule was not tested at all.
+- `TRAKIE_FAKE_OCR=1` swaps the vision call for a fake so the tests need no model. It is test-only and the server refuses to start with it when `NODE_ENV=production`.
+- The fake OCR reports the byte count of the photos, so the end-to-end tests show the bytes arrived but say nothing about extraction quality.
+- After a failed upload part way through, a retry sends only the photos the server has not counted; changing the photo list between attempts is not handled.
+
 ## Technical Decisions
 
 **o4-mini over a separate OCR service** - I originally considered piping Google Cloud Vision or Textract into an LLM for structuring. But o4-mini with function calling handles both reading and structuring in one pass. Tested a few vision models on the provided images and this was the most accurate on dense, rotated label text. Simpler pipeline, fewer failure points.
@@ -127,7 +183,7 @@ With thinking left on, the 9B model spent its whole token budget reasoning and r
 
 **Structured function calling** - The model returns typed JSON with all 16 fields and confidence levels through OpenAI's function calling with a strict schema. No free-text parsing; the only post-processing is small normalisation (spaces stripped from the package ID, a `$` added to the cost). Servers that do not enforce the schema can return bare strings, nulls or missing keys, so every product is normalised to the 16 fields and anything missing is flagged NEEDS_REVIEW.
 
-**Client-side compression** - Images are resized to 2048px max and re-encoded as JPEG before upload so we're not pushing full-resolution photos over the WebSocket. Production would use presigned S3 URLs instead of base64.
+**Client-side compression** - Images are resized to 2048px max and re-encoded as JPEG before upload so we're not pushing full-resolution photos over the WebSocket. With S3-compatible storage configured, the phone skips base64 and uploads straight to the bucket with a presigned URL (see Direct to object storage); without it, the base64 path is unchanged.
 
 **Multi-product extraction** - The model extracts all line items from an invoice and matches label photos to the corresponding product by batch number. Products without a matching label get invoice fields filled and compliance fields flagged for manual entry. That is what the prompt asks for; small models do not always follow it (see above).
 
@@ -135,7 +191,7 @@ With thinking left on, the 9B model spent its whole token budget reasoning and r
 
 - The server address is set per browser with `?server=` (default `http://localhost:3000`); a phone needs the LAN address and the same network
 - The demo was recorded with an emulated phone, not a physical one. The on-screen QR was decoded and resolves to the phone page with the live session token
-- No persistent storage - data lost on server restart
+- No persistent storage - data lost on server restart (photos in an object store are deleted after each session)
 - No authentication - session tokens only
 - No field validation beyond the required fields and numeric prices - prototype scope
 - Single server, no horizontal scaling

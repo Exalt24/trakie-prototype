@@ -128,6 +128,8 @@
     const sessionToken = params.get('s');
     const images = []; // {base64, name}
     const MAX_IMAGES = 5;
+    let uploadMode = 'socket'; // 's3' when the server hands out presigned URLs
+    let directBatch = null; // {total, done} for the current direct upload, kept for a retry
 
     // State machine: connecting -> capture -> sending -> processing -> done | error
     let currentState = 'connecting';
@@ -175,6 +177,7 @@
             : 'Session expired. Generate a new QR code.';
           document.getElementById('status').className = 'status error';
         } else {
+          uploadMode = res.uploads === 's3' ? 's3' : 'socket';
           document.getElementById('status').textContent = 'Connected to desktop';
           document.getElementById('status').className = 'status connected';
           if (currentState === 'connecting') setState('capture');
@@ -295,7 +298,62 @@
       btn.textContent = `Send to Desktop (${images.length} image${images.length !== 1 ? 's' : ''})`;
     }
 
+    function base64ToBlob(base64, type) {
+      const bin = atob(base64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return new Blob([bytes], { type });
+    }
+
+    // Emit with an ack and turn a server error or a silent server into a thrown Error
+    function emitAck(event, payload) {
+      return new Promise((resolve, reject) => {
+        socket.timeout(15000).emit(event, payload, (timedOut, res) => {
+          if (timedOut) reject(new Error('The server did not answer'));
+          else if (res && res.error) reject(new Error(res.error));
+          else resolve(res);
+        });
+      });
+    }
+
+    // S3 route: ask for a URL, PUT the photo straight to the bucket, then tell the server it is there.
+    // One photo at a time keeps the order. A retry skips the photos the server already counted.
+    async function sendImagesDirect() {
+      const bar = document.getElementById('progressBar');
+      const label = document.getElementById('progressLabel');
+      if (!directBatch) directBatch = { total: images.length, done: new Set() };
+      const { total, done } = directBatch;
+      try {
+        for (let i = 0; i < total; i++) {
+          if (done.has(i)) continue;
+          label.textContent = `Uploading image ${i + 1} of ${total}...`;
+          const contentType = 'image/jpeg';
+          const blob = base64ToBlob(images[i].base64, contentType);
+          const { url, key } = await emitAck('request-upload-url', {
+            token: sessionToken, index: i, total, contentType, size: blob.size,
+          });
+          const put = await fetch(url, { method: 'PUT', headers: { 'Content-Type': contentType }, body: blob });
+          if (!put.ok) throw new Error('Upload to storage failed (' + put.status + ')');
+          await emitAck('image-uploaded', { token: sessionToken, key, index: i, total });
+          done.add(i);
+          bar.style.width = Math.round((done.size / total) * 50) + '%';
+        }
+        directBatch = null;
+      } catch (err) {
+        document.getElementById('status').textContent = 'Upload failed: ' + err.message;
+        document.getElementById('status').className = 'status error';
+        setState('capture');
+      }
+    }
+
     function sendImages() {
+      if (uploadMode === 's3') {
+        document.getElementById('status').textContent = 'Uploading images...';
+        document.getElementById('status').className = 'status processing';
+        setState('sending');
+        sendImagesDirect();
+        return;
+      }
       document.getElementById('status').textContent = 'Uploading images...';
       document.getElementById('status').className = 'status processing';
       setState('sending');
