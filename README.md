@@ -1,5 +1,7 @@
 # Trakie Prototype
 
+[![CI](https://github.com/Exalt24/trakie-prototype/actions/workflows/ci.yml/badge.svg)](https://github.com/Exalt24/trakie-prototype/actions/workflows/ci.yml)
+
 ![Trakie demo: QR pairing, phone photos, the receiving form filling itself, then review and confirm](docs/demo.gif)
 
 *Recorded on a local stack: the server, the loaded extension and an emulated phone, with a local vision model (Qwen3.5 9B on Ollama) doing the reading. The invoice and label are made-up samples (`docs/sample/`).*
