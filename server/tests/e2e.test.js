@@ -1,3 +1,4 @@
+// LIFESPAN: permanent
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { s3Env, minioTest, ensureBucket, listKeys, waitFor, wire } = require("./helpers");

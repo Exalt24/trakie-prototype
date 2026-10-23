@@ -1,3 +1,4 @@
+// LIFESPAN: permanent
 // Removes one guard at a time in a temp copy of the server and requires `node --test` to fail each time.
 // A stale anchor (text that is no longer in the file exactly once) fails the run, so a renamed guard
 // cannot leave a mutant that silently does nothing. Needs the MinIO container, see the README.
@@ -59,7 +60,8 @@ const MUTANTS = [
 const read = (f) => fs.readFileSync(path.join(serverDir, f), "utf8").replace(/\r\n/g, "\n");
 
 function runSuite(dir) {
-  return spawnSync(process.execPath, ["--test", "tests/*.test.js"], {
+  // The reporter is pinned: Node picks `spec` on a terminal and `tap` otherwise (Node 22), and this file reads the spec marks.
+  return spawnSync(process.execPath, ["--test", "--test-reporter=spec", "tests/*.test.js"], {
     cwd: dir,
     encoding: "utf8",
     timeout: 180000,

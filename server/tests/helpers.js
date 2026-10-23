@@ -1,3 +1,4 @@
+// LIFESPAN: permanent
 const test = require("node:test");
 const { S3Client, CreateBucketCommand, ListObjectsV2Command } = require("@aws-sdk/client-s3");
 
