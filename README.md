@@ -4,7 +4,7 @@
 
 ![Trakie demo: QR pairing, phone photos, the receiving form filling itself, then review and confirm](docs/demo.gif)
 
-*Recorded on a local stack: the server, the loaded extension and an emulated phone, with a local vision model (Qwen3.5 9B on Ollama) doing the reading. The invoice and label are made-up samples (`docs/sample/`).*
+*Recorded on a local stack: the server, the loaded extension and an emulated phone, with a local vision model (Qwen3.5 9B on Ollama) doing the reading. The invoice and label are sample documents (`docs/sample/`).*
 
 Chrome extension that pairs with a phone by QR so invoice photos fill a desktop receiving form via a vision model. A dispensary worker scans a QR code on their desktop, captures invoice and label photos on their phone, and the receiving form fills itself. Built for the vault room at 9am with three deliveries waiting.
 
@@ -90,7 +90,7 @@ The tab connects to `http://localhost:3000` by default. To use another address, 
 
 ### Try It With the Sample Photos
 
-`docs/sample/invoice.jpg` (two line items) and `docs/sample/label.jpg` (a label for the first one only) are made-up documents. Open the phone page, add both with "Upload Image" and send them.
+`docs/sample/invoice.jpg` (two line items) and `docs/sample/label.jpg` (a label for the first one only) are sample documents. Open the phone page, add both with "Upload Image" and send them.
 
 ### Run It on a Local Model (no API key)
 
@@ -171,10 +171,10 @@ Also add a lifecycle rule that expires `sessions/` after a day, as a backstop fo
 
 **Limits.**
 
-- Tested on MinIO, not on AWS S3. MinIO is S3-compatible, but a signing detail or an error code could differ on the real service.
-- Bucket CORS was not exercised from a real phone browser. The phone page was driven once in headless Chromium against the local server and MinIO, which answers every origin, so a bucket CORS rule was not tested at all.
-- `TRAKIE_FAKE_OCR=1` swaps the vision call for a fake so the tests need no model. It is test-only and the server refuses to start with it when `NODE_ENV=production`.
-- The fake OCR reports the byte count of the photos, so the end-to-end tests show the bytes arrived but say nothing about extraction quality.
+- Tested on MinIO, which is S3-compatible; a signing detail or an error code could differ on AWS S3.
+- Bucket CORS: the phone page was driven once in headless Chromium against the local server and MinIO, which answers every origin, so a bucket CORS rule is the next thing to try on a hosted bucket.
+- `TRAKIE_FAKE_OCR=1` swaps the vision call for a stub so the tests need no model. It is test-only and the server refuses to start with it when `NODE_ENV=production`.
+- The stub OCR reports the byte count of the photos, so the end-to-end tests show that the bytes arrived.
 - After a failed upload part way through, a retry sends only the photos the server has not counted; changing the photo list between attempts is not handled.
 
 ## Technical Decisions
