@@ -125,6 +125,30 @@ With thinking left on, the 9B model spent its whole token budget reasoning and r
 
 **What to expect from a small local model.** It reads the documents but is not as careful as the model this prompt was written for. In the recording every field shows MEDIUM. The model returns bare values with no confidence, and the server marks those MEDIUM. It also put the invoice line total in Retail Price. For the product that had no label photo it invented an expiry date, a barcode, ingredients and allergens. The recording shows the clerk clearing those before confirming. That review step is the reason the form exists. The extraction accuracy of the default o4-mini setup was not re-measured here.
 
+## Local OCR engine (Tesseract, no model)
+
+Set `TRAKIE_OCR_ENGINE=tesseract` and the server reads invoice photos with Tesseract (`tesseract.js` and the `@tesseract.js-data/eng` language data, both from npm) instead of calling a vision model. It needs no API key and no network. `server/local-ocr.js` turns the recognised text into the same 16 fields, so the extension and the form do not change.
+
+- It reads the invoice table: vendor (from "Sold By"), product, batch (the code in parentheses), quantity, price, and the date and Total Due.
+- A field is HIGH only when Tesseract's mean confidence for the page is 70 or more, quantity times price equals the row total, and the row totals add up to Total Due. Anything else is MEDIUM, so the clerk looks.
+- It does not read product labels. Brand, category, potency, ingredients, allergens and expiry stay empty and flagged NEEDS_REVIEW. Package ID is 0, the same rule as the vision prompt.
+- A photo with no table rows gives the same "No products detected" error as the model path.
+
+One recorded run on 2026-11-10 (Node 24, tesseract.js 7.0.0, English data, 0.4 s for the page) on `docs/sample/invoice.jpg`:
+
+```
+engine_confidence 87, date 10/08/2026, total_due 338.00, total_ties true, rows 2
+Pinecrest Berry Gummies 10mg      | batch PCB-2204-17 | 20 ea / 1 case | $8.50  | HIGH
+Pinecrest Mint Chocolate Bar 100mg| batch PCB-2231-09 | 12 ea / 1 case | $14.00 | HIGH
+vendor: Pinecrest Botanicals LLC (MEDIUM)
+```
+
+The invoice number `INV-20417` in the bold corner heading was not read (Tesseract returned `0 oa`), so that value is empty and not guessed. A second fixture, `tests/invoice-harbor.png` (three rows, a plain text layout drawn by `tests/make-invoice-fixture.py`), reads all three rows too.
+
+**Tests.** `server/tests/local-ocr.test.js` has 14 tests: the parser on known text, a generated table of bad inputs that each turn one check red (with a passing control row), real OCR on both images, two photos in one session, a blank image, the engine switch, and the server run as a child process with a phone photo sent over Socket.IO. `node tests/mutants.mjs --suite local-ocr` removes one check at a time (row arithmetic, the Total Due sum, the confidence floor, the HIGH rule, the label-field flag, the empty-result error, reading every photo, the vendor stop, the engine name check) and caught 9 of 9. It needs no container.
+
+**Limits.** It was run on two clean, printed, generated invoices, not on phone photos with glare or rotation, and not in production. It reads one layout family (a row of name, batch in parentheses, quantity, price, total). The vision path stays the default and is the one that reads labels.
+
 ## Direct to object storage
 
 Set `S3_BUCKET` and the phone stops sending photos through the WebSocket. For each photo it asks the server for a presigned URL (`request-upload-url`). It PUTs the compressed JPEG straight to the bucket, then tells the server it is there (`image-uploaded`). The server fetches the object and runs the same code as the base64 path (progress events, the processing guard, the vision call). It deletes the session's objects once the result or the error is out, or when the desktop leaves. With `S3_BUCKET` unset nothing changes. The join reply says `uploads: "socket"` and the phone sends base64 as before.
@@ -144,23 +168,7 @@ What the server checks before it signs and before it reads:
 | `S3_FORCE_PATH_STYLE` | Optional, `1` forces path-style on a store without `S3_ENDPOINT` |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | The only place credentials are read from |
 
-Try it against MinIO:
-
-```bash
-docker run -d --name trakie-minio -p 59000:9000 -e MINIO_ROOT_USER=minio -e MINIO_ROOT_PASSWORD=minio12345 pgsty/minio:RELEASE.2026-08-04T00-00-00Z server /data
-# create the bucket once (console at http://localhost:59000 or any S3 client), then:
-S3_BUCKET=trakie S3_ENDPOINT=http://localhost:59000 AWS_ACCESS_KEY_ID=minio AWS_SECRET_ACCESS_KEY=minio12345 npm start
-```
-
-`minio/minio` is no longer on Docker Hub. The quay.io copy refuses anonymous pulls. So the tests and CI use the `pgsty/minio` fork pinned by tag.
-
-**Bucket CORS.** The phone page PUTs from the server's own origin, so a real bucket needs a rule that allows that origin, the PUT method and the Content-Type header:
-
-```json
-[{"AllowedOrigins": ["https://your-server-origin"], "AllowedMethods": ["PUT"], "AllowedHeaders": ["Content-Type"], "MaxAgeSeconds": 300}]
-```
-
-Also add a lifecycle rule that expires `sessions/` after a day, as a backstop for photos uploaded by a phone that vanished before the server could delete them.
+Trying it against MinIO and the bucket CORS rule are in [docs/object-storage.md](docs/object-storage.md).
 
 **Tests.** `cd server && npm test` runs the Node test runner. The MinIO tests skip with a message when nothing answers on `localhost:59000`. With `TRAKIE_REQUIRE_MINIO=1` (what CI sets) a missing container fails them instead. `node tests/mutants.mjs` removes one guard at a time in a temp copy and requires the suite to fail each time. Run on 2026-10-24 against MinIO `RELEASE.2026-08-04T00-00-00Z`:
 
@@ -183,7 +191,7 @@ Also add a lifecycle rule that expires `sessions/` after a day, as a backstop fo
 
 ## Technical Decisions
 
-**o4-mini over a separate OCR service.** I originally considered piping Google Cloud Vision or Textract into an LLM for structuring. But o4-mini with function calling handles both reading and structuring in one pass. Tested a few vision models on the provided images and this was the most accurate on dense, rotated label text. Simpler pipeline, fewer failure points.
+**o4-mini over a separate OCR service.** I originally considered piping Google Cloud Vision or Textract into an LLM for structuring. But o4-mini with function calling handles both reading and structuring in one pass. Tested a few vision models on the provided images and this was the most accurate on dense, rotated label text. Simpler pipeline, fewer failure points. A local Tesseract engine is also there for printed invoices (see Local OCR engine), because it needs no key and its arithmetic check can prove a row.
 
 **Socket.IO rooms for pairing.** Each QR scan creates a session token. Phone and desktop join the same room. Same pattern as WhatsApp Web. Clean isolation without authentication for a prototype.
 

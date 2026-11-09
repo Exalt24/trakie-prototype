@@ -55,13 +55,39 @@ const MUTANTS = [
     to: "    if (session.received.has(key))" },
   { name: "repeat report of one key", file: "index.js",
     from: '    if (session.received.has(key)) return reply({ error: "Image already received" });\n', to: "" },
+  // Local OCR engine: each check that keeps a wrong read from looking certain. These run only
+  // tests/local-ocr.test.js, which needs no container (`node tests/mutants.mjs --suite local-ocr`).
+  { name: "OCR row arithmetic check", file: "local-ocr.js", suite: "local-ocr",
+    from: "Number(g.qty) * cents(g.price) === cents(g.total)", to: "true" },
+  { name: "OCR rows must add up to Total Due", file: "local-ocr.js", suite: "local-ocr",
+    from: "=== cents(totalDue);", to: ">= 0;" },
+  { name: "OCR engine confidence floor", file: "local-ocr.js", suite: "local-ocr",
+    from: "const sure = parsed.engineConfidence >= MIN_ENGINE_CONFIDENCE;", to: "const sure = true;" },
+  { name: "OCR HIGH needs the row to tie", file: "local-ocr.js", suite: "local-ocr",
+    from: "const proven = sure && r.rowTies && parsed.sumTies;", to: "const proven = sure && parsed.sumTies;" },
+  { name: "OCR label-only fields flagged for review", file: "local-ocr.js", suite: "local-ocr",
+    from: 'for (const f of FIELDS) p[f] = { value: "", confidence: "NEEDS_REVIEW" };',
+    to: 'for (const f of FIELDS) p[f] = { value: "", confidence: "HIGH" };' },
+  { name: "OCR empty result is an error", file: "local-ocr.js", suite: "local-ocr",
+    from: "if (products.length === 0) {", to: "if (false) {" },
+  { name: "OCR every photo is read", file: "local-ocr.js", suite: "local-ocr",
+    from: "products.push(...toProducts(parsed));", to: "products.splice(0, products.length, ...toProducts(parsed));" },
+  { name: "OCR vendor stops at Ship To", file: "local-ocr.js", suite: "local-ocr",
+    from: "Sold By:\\s*(.+?)(?:\\s+Ship To:|$)", to: "Sold By:\\s*(.+)" },
+  { name: "OCR unknown engine name refused", file: "ocr-select.js", suite: "local-ocr",
+    from: "if (env.TRAKIE_OCR_ENGINE) {", to: "if (false) {" },
 ];
+
+// `--suite local-ocr` runs only the OCR mutants against only the OCR tests (no MinIO needed).
+const suiteArg = process.argv.includes("--suite") ? process.argv[process.argv.indexOf("--suite") + 1] : null;
+const TEST_GLOB = suiteArg === "local-ocr" ? "tests/local-ocr.test.js" : "tests/*.test.js";
+const ACTIVE = suiteArg ? MUTANTS.filter((m) => m.suite === suiteArg) : MUTANTS;
 
 const read = (f) => fs.readFileSync(path.join(serverDir, f), "utf8").replace(/\r\n/g, "\n");
 
 function runSuite(dir) {
   // The reporter is pinned: Node picks `spec` on a terminal and `tap` otherwise (Node 22), and this file reads the spec marks.
-  return spawnSync(process.execPath, ["--test", "--test-reporter=spec", "tests/*.test.js"], {
+  return spawnSync(process.execPath, ["--test", "--test-reporter=spec", TEST_GLOB], {
     cwd: dir,
     encoding: "utf8",
     timeout: 180000,
@@ -86,7 +112,7 @@ function copyTo(dir) {
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "trakie-mutants-"));
 let failed = false;
 try {
-  for (const m of MUTANTS) {
+  for (const m of ACTIVE) {
     const count = read(m.file).split(m.from).length - 1;
     if (count !== 1) {
       console.error(`STALE ANCHOR: "${m.name}" matches ${count} times in ${m.file}`);
@@ -106,7 +132,7 @@ try {
   console.log(`baseline: pass, skipped ${skipped ? skipped[1] : "?"}`);
 
   let caught = 0;
-  for (const m of MUTANTS) {
+  for (const m of ACTIVE) {
     copyTo(tmp);
     const file = path.join(tmp, m.file);
     fs.writeFileSync(file, fs.readFileSync(file, "utf8").replace(m.from, () => m.to));
@@ -125,7 +151,7 @@ try {
       console.error(`SURVIVED ${m.name}`);
     }
   }
-  console.log(`mutants: ${caught}/${MUTANTS.length} caught`);
+  console.log(`mutants: ${caught}/${ACTIVE.length} caught`);
 } finally {
   fs.rmSync(tmp, { recursive: true, force: true });
 }

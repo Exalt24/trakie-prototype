@@ -31,7 +31,7 @@ jobs:
 
       - name: Syntax check server and extension scripts
         run: |
-          for f in server/index.js server/ocr.js server/ocr-select.js server/uploads.js server/storage.js extension/popup.js extension/tab.js; do
+          for f in server/index.js server/ocr.js server/ocr-select.js server/local-ocr.js server/uploads.js server/storage.js extension/popup.js extension/tab.js; do
             node --check "$f"
           done
           node -e "JSON.parse(require('fs').readFileSync('extension/manifest.json', 'utf8'))"

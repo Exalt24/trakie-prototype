@@ -18,6 +18,12 @@ function selectExtractor(env = process.env) {
     }
     return fakeExtract;
   }
+  if (env.TRAKIE_OCR_ENGINE === "tesseract") {
+    return require("./local-ocr").extractFromImages;
+  }
+  if (env.TRAKIE_OCR_ENGINE) {
+    throw new Error(`TRAKIE_OCR_ENGINE must be "tesseract" or unset, got "${env.TRAKIE_OCR_ENGINE}"`);
+  }
   return require("./ocr").extractFromImages;
 }
 
