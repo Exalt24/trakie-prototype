@@ -147,7 +147,7 @@ The invoice number `INV-20417` in the bold corner heading was not read (Tesserac
 
 **Tests.** `server/tests/local-ocr.test.js` has 14 tests: the parser on known text, a generated table of bad inputs that each turn one check red (with a passing control row), real OCR on both images, two photos in one session, a blank image, the engine switch, and the server run as a child process with a phone photo sent over Socket.IO. `node tests/mutants.mjs --suite local-ocr` removes one check at a time (row arithmetic, the Total Due sum, the confidence floor, the HIGH rule, the label-field flag, the empty-result error, reading every photo, the vendor stop, the engine name check) and caught 9 of 9. It needs no container.
 
-**Limits.** It was run on two clean, printed, generated invoices, not on phone photos with glare or rotation, and not in production. It reads one layout family (a row of name, batch in parentheses, quantity, price, total). The vision path stays the default and is the one that reads labels.
+**Limits.** It was run on two clean printed invoices. Phone photos with glare or rotation were not part of the test. It reads one layout family (a row of name, batch in parentheses, quantity, price, total). The vision path stays the default and is the one that reads labels.
 
 ## Direct to object storage
 
