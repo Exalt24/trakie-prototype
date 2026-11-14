@@ -189,6 +189,10 @@ Trying it against MinIO and the bucket CORS rule are in [docs/object-storage.md]
 - The stub OCR reports the byte count of the photos, so the end-to-end tests show that the bytes arrived.
 - After a failed upload part way through, a retry sends only the photos the server has not counted. Changing the photo list between attempts is not handled.
 
+## Large videos in parts
+
+A video goes up in 8 MiB parts, so a dropped connection costs one part. Asking again for the slot is a resume: only the missing parts get new URLs. The parts are joined only when all are there at their exact size. Run on MinIO with a 17 MiB file: 17 tests and 19 deliberate breakages each caught. Details and limits: [docs/video-uploads.md](docs/video-uploads.md).
+
 ## Technical Decisions
 
 **o4-mini over a separate OCR service.** I originally considered piping Google Cloud Vision or Textract into an LLM for structuring. But o4-mini with function calling handles both reading and structuring in one pass. Tested a few vision models on the provided images and this was the most accurate on dense, rotated label text. Simpler pipeline, fewer failure points. A local Tesseract engine is also there for printed invoices (see Local OCR engine), because it needs no key and its arithmetic check can prove a row.
@@ -197,7 +201,7 @@ Trying it against MinIO and the bucket CORS rule are in [docs/object-storage.md]
 
 **Structured function calling.** The model returns typed JSON with all 16 fields and confidence levels through OpenAI's function calling with a strict schema. No free-text parsing. The only post-processing is small normalisation (spaces stripped from the package ID, a `$` added to the cost). Servers that do not enforce the schema can return bare strings, nulls or missing keys. So every product is normalised to the 16 fields, and anything missing is flagged NEEDS_REVIEW.
 
-**Client-side compression.** Images are resized to 2048px max and re-encoded as JPEG before upload so we're not pushing full-resolution photos over the WebSocket. With S3-compatible storage configured, the phone skips base64. It uploads straight to the bucket with a presigned URL (see Direct to object storage). Without it, the base64 path is unchanged.
+**Client-side compression.** Images are resized to 2048px max and re-encoded as JPEG before upload so we're not pushing full-resolution photos over the WebSocket. With a bucket set, the phone skips base64 (see Direct to object storage).
 
 **Multi-product extraction.** The model extracts all line items from an invoice and matches label photos to the corresponding product by batch number. Products without a matching label get invoice fields filled and compliance fields flagged for manual entry. That is what the prompt asks for; small models do not always follow it (see above).
 
@@ -207,5 +211,4 @@ Trying it against MinIO and the bucket CORS rule are in [docs/object-storage.md]
 - The demo was recorded with an emulated phone, not a physical one. The on-screen QR was decoded and resolves to the phone page with the live session token.
 - No persistent storage: data is lost on server restart (photos in an object store are deleted after each session).
 - No authentication: session tokens only.
-- No field validation beyond the required fields and numeric prices. That is prototype scope.
-- Single server, no horizontal scaling.
+- No field validation beyond the required fields and numeric prices.

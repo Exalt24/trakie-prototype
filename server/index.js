@@ -14,6 +14,16 @@ const {
   validateUploadRequest,
   keyBelongsToSession,
 } = require("./uploads");
+const {
+  VIDEO_LIMITS,
+  videoKey,
+  validateVideoRequest,
+  videoKeyBelongsToSession,
+  planParts,
+  partSize,
+  missingParts,
+  checkComplete,
+} = require("./video-uploads");
 
 const extractFromImages = selectExtractor(process.env);
 // null unless S3_BUCKET is set; then phones upload straight to the bucket.
@@ -45,7 +55,23 @@ async function releaseObjects(session) {
   const keys = [...session.presigned];
   session.presigned.clear();
   session.received.clear();
-  if (!storage || keys.length === 0) return;
+  // A video upload that never finished holds parts the store keeps billing for: abort it.
+  // A finished one is an object like any other and goes out with the delete below.
+  const videos = [...(session.videos || new Map())];
+  if (session.videos) session.videos.clear();
+  if (!storage) return;
+  for (const [key, v] of videos) {
+    if (v.done) {
+      keys.push(key);
+      continue;
+    }
+    try {
+      await storage.abortMultipart(key, v.uploadId);
+    } catch (err) {
+      console.error("Video upload abort failed:", err.message);
+    }
+  }
+  if (keys.length === 0) return;
   try {
     await storage.deleteObjects(keys);
   } catch (err) {
@@ -137,6 +163,7 @@ io.on("connection", (socket) => {
       images: [],
       presigned: new Set(), // object keys handed out, deleted when the session ends
       received: new Set(), // object keys already counted
+      videos: new Map(), // video key -> { uploadId, plan, contentType, done }
       processing: false,
       createdAt: Date.now(),
     });
@@ -228,6 +255,80 @@ io.on("connection", (socket) => {
       return reply({ error: "Uploaded image not found" });
     }
     await receiveImage(session, token, buf, index, total, () => reply({ success: true }));
+  });
+
+  // Mobile asks to send a big video in parts. Asking again for the same slot is a RESUME: the
+  // store is asked what it already holds and only the missing parts get a new URL.
+  socket.on("request-video-upload", async (req, callback) => {
+    const reply = typeof callback === "function" ? callback : () => {};
+    const session = sessions.get(req && req.token);
+    if (!session) return reply({ error: "Session not found" });
+    if (session.mobileId !== socket.id) return reply({ error: "Not paired to this session" });
+    if (!storage) return reply({ error: "Direct upload is not configured" });
+    if (session.processing) return reply({ error: "Session is already processing" });
+    const invalid = validateVideoRequest(req, VIDEO_LIMITS);
+    if (invalid) return reply({ error: invalid });
+
+    const key = videoKey(req.token, req.index, req.contentType);
+    try {
+      let v = session.videos.get(key);
+      if (v && (v.plan.size !== req.size || v.contentType !== req.contentType)) {
+        return reply({ error: "This slot already holds a different file" });
+      }
+      if (v && v.done) return reply({ error: "Video already received" });
+      if (!v) {
+        const uploadId = await storage.createMultipart(key, req.contentType);
+        v = { uploadId, plan: planParts(req.size), contentType: req.contentType, done: false };
+        session.videos.set(key, v);
+      }
+      const owed = missingParts(v.plan, await storage.listParts(key, v.uploadId));
+      const parts = [];
+      for (const n of owed) {
+        parts.push({
+          partNumber: n,
+          size: partSize(v.plan, n),
+          url: await storage.presignPart(key, v.uploadId, n, partSize(v.plan, n)),
+        });
+      }
+      reply({
+        key,
+        partBytes: v.plan.partBytes,
+        count: v.plan.count,
+        alreadyUploaded: v.plan.count - owed.length,
+        parts,
+        expiresIn: DEFAULT_EXPIRES_IN,
+      });
+    } catch (err) {
+      console.error("Video presign error:", err.message);
+      reply({ error: "Could not start the video upload" });
+    }
+  });
+
+  // Mobile says every part is up. The server counts them in the store before joining them,
+  // and reads the joined object's size back, so a short video is never reported as received.
+  socket.on("video-uploaded", async (msg, callback) => {
+    const reply = typeof callback === "function" ? callback : () => {};
+    const { token, key } = msg || {};
+    const session = sessions.get(token);
+    if (!session) return reply({ error: "Session not found" });
+    if (session.mobileId !== socket.id) return reply({ error: "Not paired to this session" });
+    if (!storage) return reply({ error: "Direct upload is not configured" });
+    if (!videoKeyBelongsToSession(key, token)) return reply({ error: "Invalid key" });
+    const v = session.videos.get(key);
+    if (!v) return reply({ error: "No video upload was started for this key" });
+    if (v.done) return reply({ error: "Video already received" });
+    try {
+      const listed = await storage.listParts(key, v.uploadId);
+      const problem = checkComplete(v.plan, listed);
+      if (problem) return reply({ error: problem, missing: missingParts(v.plan, listed) });
+      await storage.completeMultipart(key, v.uploadId, listed);
+      const head = await storage.headObject(key);
+      v.done = true;
+      reply({ success: true, key, size: head.size });
+    } catch (err) {
+      console.error("Video completion error:", err.message);
+      reply({ error: "Could not finish the video upload" });
+    }
   });
 
   socket.on("disconnect", () => {

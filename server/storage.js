@@ -2,7 +2,13 @@ const {
   S3Client,
   PutObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   DeleteObjectsCommand,
+  CreateMultipartUploadCommand,
+  UploadPartCommand,
+  ListPartsCommand,
+  CompleteMultipartUploadCommand,
+  AbortMultipartUploadCommand,
 } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 
@@ -65,6 +71,59 @@ function createStorage(env = process.env) {
         throw new Error("Object is larger than the allowed size");
       }
       return Buffer.from(await res.Body.transformToByteArray());
+    },
+
+    // Multipart: the server opens the upload and keeps the upload id, so a client can only
+    // ever add parts to an upload this server started for that key.
+    async createMultipart(key, contentType) {
+      const res = await client.send(
+        new CreateMultipartUploadCommand({ Bucket: bucket, Key: key, ContentType: contentType })
+      );
+      return res.UploadId;
+    },
+
+    // Content-Length is part of the command and the presigner signs it, so the store refuses a
+    // part of another size (tests/video-uploads.test.js sends one byte too few and one too many).
+    presignPart(key, uploadId, partNumber, size, { expiresIn = DEFAULT_EXPIRES_IN } = {}) {
+      const command = new UploadPartCommand({
+        Bucket: bucket,
+        Key: key,
+        UploadId: uploadId,
+        PartNumber: partNumber,
+        ContentLength: size,
+      });
+      return getSignedUrl(client, command, { expiresIn });
+    },
+
+    // What the store holds for this upload. One call is enough: a video has at most 256 parts
+    // (2 GiB in 8 MiB parts) and the store lists up to 1,000 per call.
+    async listParts(key, uploadId) {
+      const res = await client.send(
+        new ListPartsCommand({ Bucket: bucket, Key: key, UploadId: uploadId, MaxParts: 1000 })
+      );
+      return (res.Parts || []).map((p) => ({ partNumber: p.PartNumber, size: p.Size, etag: p.ETag }));
+    },
+
+    async completeMultipart(key, uploadId, parts) {
+      await client.send(
+        new CompleteMultipartUploadCommand({
+          Bucket: bucket,
+          Key: key,
+          UploadId: uploadId,
+          MultipartUpload: {
+            Parts: parts.map((p) => ({ PartNumber: p.partNumber, ETag: p.etag })),
+          },
+        })
+      );
+    },
+
+    async abortMultipart(key, uploadId) {
+      await client.send(new AbortMultipartUploadCommand({ Bucket: bucket, Key: key, UploadId: uploadId }));
+    },
+
+    async headObject(key) {
+      const res = await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+      return { size: res.ContentLength, contentType: res.ContentType };
     },
 
     async deleteObjects(keys) {
